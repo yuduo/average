@@ -589,6 +589,7 @@ int main()
 }
 #endif
 
+#if 0
 #include<opencv2\core\core.hpp>
 #include <opencv2\opencv.hpp>
 #include<vector>
@@ -601,6 +602,37 @@ int main(int argc, char** argv)
 
 	// 读取RBG图片，转成Lab模式
 	Mat bgr_image = imread("e:/LEFTIMAGE_.tif",1);
+
+
+	Mat image = bgr_image;
+	//cvtColor(imgResult, img, cv::COLOR_GRAY2RGB, 3);
+	Mat new_image = Mat::zeros(image.size(), image.type());
+	int alpha = 3.0;
+	int beta = 100;
+	/// Do the operation new_image(i,j) = alpha*image(i,j) + beta
+	for (int y = 0; y < image.rows; y++)
+	{
+		for (int x = 0; x < image.cols; x++)
+		{
+			for (int c = 0; c < 3; c++)
+			{
+				new_image.at<Vec3b>(y, x)[c] =
+					saturate_cast<uchar>(alpha*(image.at<Vec3b>(y, x)[c]) + beta);
+			}
+		}
+	}
+
+	/// Create Windows
+	namedWindow("Original Image", 1);
+	namedWindow("New Image", 1);
+
+	/// Show stuff
+	imshow("Original Image", image);
+	imshow("New Image", new_image);
+	waitKey();
+
+	bgr_image = new_image;
+
 	if (!bgr_image.rows) {
 		cout << "imread failed!" << endl;
 		return 0;
@@ -634,33 +666,9 @@ int main(int argc, char** argv)
 	imshow("CLAHE处理", image_clahe);
 	waitKey();
 
-	Mat image = image_clahe; Mat new_image = Mat::zeros(image.size(), image.type());
-	int alpha = 3.0;
-	int beta = 100;
-	/// Do the operation new_image(i,j) = alpha*image(i,j) + beta
-	for (int y = 0; y < image.rows; y++)
-	{
-		for (int x = 0; x < image.cols; x++)
-		{
-			for (int c = 0; c < 3; c++)
-			{
-				new_image.at<Vec3b>(y, x)[c] =
-					saturate_cast<uchar>(alpha*(image.at<Vec3b>(y, x)[c]) + beta);
-			}
-		}
-	}
-
-	/// Create Windows
-	namedWindow("Original Image", 1);
-	namedWindow("New Image", 1);
-
-	/// Show stuff
-	imshow("Original Image", image);
-	imshow("New Image", new_image);
-	waitKey();
-
-	Mat img = new_image;
-	cvtColor(new_image, img, cv::COLOR_RGB2GRAY,1);
+#if 1
+	Mat img = image_clahe;
+	cvtColor(image_clahe, img, cv::COLOR_RGB2GRAY,1);
 	Mat imgLaplacian; Mat imgResult;
 	Mat kernel = (Mat_<float>(3, 3) <<
 		1, 1, 1,
@@ -678,7 +686,7 @@ int main(int argc, char** argv)
 	filter2D(img, imgLaplacian, CV_32F, kernel);
 	img.convertTo(img, CV_32F);
 	imgResult = img - imgLaplacian;
-	imgResult = imgResult + 180;
+	//imgResult = imgResult + 180;
 
 	// convert back to 8bits gray scale
 	imgResult.convertTo(imgResult, CV_8U);
@@ -691,7 +699,112 @@ int main(int argc, char** argv)
 	imshow("result", imgResult);
 
 	waitKey();
+#else
+	short int pe=3;	// primary enhancementFactor
+	short int se=-3; // primary enhancementFactor
+	Mat inputImage= image_clahe, outputImage, kern;
+	//assigning mask to kern variable
+	kern = (Mat_<char>(3, 3) <<
+		0, se, 0,
+		se, pe, se,
+		0, se, 0);
+
+	//applying mask to input image
+	filter2D(inputImage, outputImage, inputImage.depth(), kern);
 
 
+
+	//defying windows and siplaying images
+	namedWindow("Input image", CV_WINDOW_AUTOSIZE);
+	namedWindow("Output image", CV_WINDOW_AUTOSIZE);
+	imshow("Input image", inputImage);
+	imshow("Output image", outputImage);
+	Mat imgResult = outputImage;
+	waitKey();
+#endif
+
+	int i = 25;
+	Mat src = imgResult; //Mat dst;
+	// smooth the image in the "src" and save it to "dst"
+	blur(src, dst, Size(i, i));
+	imshow("blur filter", dst);
+
+	// Gaussian smoothing
+	GaussianBlur(src, dst, Size(i, i), 0, 0);
+	imshow("Gaussian filter", dst);
+
+	// Median smoothing
+	medianBlur(src, dst, i);
+
+	// show the blurred image with the text
+	imshow("Median filter", dst);
+
+	// Bilateral smoothing
+	bilateralFilter(src, dst, i, i * 2, i * 2);
+
+	//show the blurred image with the text
+	imshow("Bilateral filter", dst);
+
+	// wait for 5 seconds
+	waitKey(0);
+	return 0;
+}
+#endif
+
+#include <opencv2\opencv.hpp>
+#include <opencv2\imgcodecs.hpp>
+#include <opencv2\imgproc\imgproc.hpp>
+#include <opencv2\highgui\highgui.hpp>
+#include "suace.h"
+using namespace cv;
+using namespace std;
+
+int a = 21;
+int b = 36;
+int intensityMax = 255;
+
+int main()
+{
+	namedWindow("SUACE", 1);
+	createTrackbar("distance", "SUACE", &a, intensityMax);
+	createTrackbar("sigma", "SUACE", &b, intensityMax);
+	char filename[100];
+	Mat suaceResult;
+	Mat frame;
+
+	// 读取RBG图片，转成Lab模式
+	Mat bgr_image = imread("e:/LEFTIMAGE_.tif", 1);
+
+
+	Mat image = bgr_image;
+	//cvtColor(imgResult, img, cv::COLOR_GRAY2RGB, 3);
+	Mat new_image = Mat::zeros(image.size(), image.type());
+	int alpha = 3.0;
+	int beta = 100;
+	/// Do the operation new_image(i,j) = alpha*image(i,j) + beta
+	for (int y = 0; y < image.rows; y++)
+	{
+		for (int x = 0; x < image.cols; x++)
+		{
+			for (int c = 0; c < 3; c++)
+			{
+				new_image.at<Vec3b>(y, x)[c] =
+					saturate_cast<uchar>(alpha*(image.at<Vec3b>(y, x)[c]) + beta);
+			}
+		}
+	}
+
+	cvtColor(new_image, frame, cv::COLOR_RGB2GRAY, 1);
+	while (true)
+	{
+		
+		//frame = imread("e:/LEFTIMAGE_.tif", CV_LOAD_IMAGE_GRAYSCALE);
+		performSUACE(frame, suaceResult, a, (b + 1) / 8.0); //perform SUACE with the parameters
+		imshow("SUACE", suaceResult);
+		imshow("Original", frame);
+		int response = waitKey(0);//press key to update
+		if (response == 32) //exit when spacebar key pressed;
+			break;
+	}
 	return 0;
 }
