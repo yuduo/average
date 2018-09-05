@@ -273,6 +273,7 @@ void thresh_callback(int, void*)
 	imshow("Contours", drawing);
 }
 #endif
+#if 0
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/highgui.hpp"
 #include "opencv2/imgproc.hpp"
@@ -379,7 +380,12 @@ int main(int argc, char** argv)
 	Mat kernel = (Mat_<float>(3, 3) <<
 		1, 1, 1,
 		1, -8, 1,
-		1, 1, 1); // another approximation of second derivate, more stronger
+		1, 1, 1); 
+	/*Mat kernel = (Mat_<float>(3, 3) <<
+		0, -1, 0,
+		-1, 5, -1,
+		0, -1, 0);*/
+		// another approximation of second derivate, more stronger
 
 				  // do the laplacian filtering as it is
 				  // well, we need to convert everything in something more deeper then CV_8U
@@ -390,7 +396,7 @@ int main(int argc, char** argv)
 	filter2D(img, imgLaplacian, CV_32F, kernel);
 	img.convertTo(img, CV_32F);
 	imgResult = img - imgLaplacian;
-	imgResult = imgResult + 80;
+	imgResult = imgResult + 180;
 
 	// convert back to 8bits gray scale
 	imgResult.convertTo(imgResult, CV_8U);
@@ -402,12 +408,290 @@ int main(int argc, char** argv)
 	namedWindow("result", CV_WINDOW_AUTOSIZE);
 	imshow("result", imgResult);
 
-	GaussianBlur(imgResult, imgResult, cv::Size(0, 0), 3);
+	/*GaussianBlur(imgResult, imgResult, cv::Size(0, 0), 3);
 	addWeighted(imgResult, 1.5, imgResult, -0.5, 0, imgResult);
-	imshow("result2", imgResult);
+	imshow("result2", imgResult);*/
 	
 #endif
 	/// Wait until user press some key
 	waitKey();
+	return 0;
+}
+
+#endif
+
+#if 0
+#include <opencv2/opencv.hpp>
+#include <iostream>
+#include <cmath>
+#include <string>
+using namespace cv;
+using namespace std;
+
+void histEqualize(Mat &src, Mat &dst); //Histogram equalization
+void drawHist(const Mat &src, Mat &dst); // Draw Histogram
+
+int main()
+{
+	Mat image, hist1, hist2;
+	int histSize = 256;
+	float range[] = { 0, 255 };
+	const float* histRange = { range };
+
+
+	image = imread("e:/LEFTIMAGE_.tif", CV_LOAD_IMAGE_GRAYSCALE);
+
+	if (!image.data) {// Check for invalid input
+		cout << "Could not open or find the image" << endl;
+		system("pause");
+		return -1;
+	}
+	Mat out = Mat::zeros(image.size(), image.type());
+
+	histEqualize(image, out); //eq
+
+	namedWindow("Original", CV_WINDOW_AUTOSIZE);
+	imshow("Original", image);
+	waitKey(0);
+
+	calcHist(&image, 1, 0, Mat(), hist1, 1, &histSize, &histRange);
+	Mat showHist1(256, 256, CV_8UC1, Scalar(255));
+	drawHist(hist1, showHist1);
+
+	namedWindow("Histogram(Original)", CV_WINDOW_AUTOSIZE);
+	imshow("Histogram(Original)", showHist1);
+	waitKey(0);
+
+	namedWindow("Histogram Equalization", CV_WINDOW_AUTOSIZE);
+	imshow("Histogram Equalization", out);
+	waitKey(0);
+
+
+	calcHist(&out, 1, 0, Mat(), hist2, 1, &histSize, &histRange);
+	Mat showHist2(256, 256, CV_8UC1, Scalar(255));
+	drawHist(hist2, showHist2);
+
+	namedWindow("Histogram(Equalized)", CV_WINDOW_AUTOSIZE);
+	imshow("Histogram(Equalized)", showHist2);
+	waitKey(0);
+
+	//imwrite("Histogram_equalized.jpg", out);
+
+	return 0;
+}
+
+void histEqualize(Mat &src, Mat &dst)
+{
+	int gray[256]{ 0 }; //Ex: gray[0] = gray value 0 appaer times, gray[1] = gray value 1 appaer times, ...
+	for (int y = 0; y < src.rows; y++) {
+		for (int x = 0; x < src.cols; x++) { //count each gray value appaer times
+			gray[(int)src.at<uchar>(y, x)]++;
+		}
+	}
+
+	int mincdf; //Minimum of cdf
+
+	for (int i = 0; i < 255; i++) { //calculate cdf (Cumulative distribution function)
+		gray[i + 1] += gray[i];
+	}
+
+	for (int i = 0; i < 255; i++) { //find minimum of cdf
+		if (gray[i] != 0) {
+			mincdf = gray[i];
+			break;
+		}
+	}
+
+	for (int y = 0; y < src.rows; y++) {
+		for (int x = 0; x < src.cols; x++) {
+			// h(v) = round(((cdf(v) - mincdf) / (M * N) - mincdf) * (L - 1)) ; L = 2^8
+			dst.at<uchar>(y, x) = (uchar)round((((double)gray[(int)src.at<uchar>(y, x)] - mincdf) / (double)(src.rows * src.cols - mincdf)) * (double)255);
+		}
+	}
+}
+
+void drawHist(const Mat &src, Mat &dst)
+{
+	int histSize = 256;
+	float histMax = 0;
+	for (int i = 0; i < histSize; i++) {
+		float temp = src.at<float>(i);
+		if (histMax < temp) {
+			histMax = temp;
+		}
+	}
+
+	float scale = (0.9 * 256) / histMax;
+	for (int i = 0; i < histSize; i++) {
+		int intensity = static_cast<int>(src.at<float>(i)*scale);
+		line(dst, Point(i, 255), Point(i, 255 - intensity), Scalar(0));
+	}
+}
+#endif
+
+#if 0
+#include <iostream>
+#include <vector>
+#include <opencv2/opencv.hpp>
+
+// Global Variables
+cv::Mat hue;
+int minHue = 0;
+int maxHue = 0;
+
+// Do all the thresholding
+void threshold(int, void*)
+{
+	using namespace cv;
+
+	Mat threshLow;
+	Mat threshHigh;
+	threshold(hue, threshLow, minHue, 255, THRESH_BINARY);
+	threshold(hue, threshHigh, maxHue, 255, THRESH_BINARY_INV);
+	Mat threshed = threshLow & threshHigh;
+
+	imshow("threshLow", threshLow);
+	imshow("threshHigh", threshHigh);
+	imshow("Thresholded", threshed);
+}
+
+int main()
+{
+	
+
+	cv::Mat img = cv::imread("e:/LEFTIMAGE_.tif", 1);
+
+	// Blur the image to smooth it out (especially with JPG's)
+	cv::GaussianBlur(img, img, cv::Size(3, 3), 1, 1);
+
+	cv::imshow("Full", img);
+
+	// Convert to HSV
+	cv::Mat cvted;
+	cv::cvtColor(img, cvted, CV_BGR2HSV);
+
+	// Isolate the Hue Channel, and store in global variable
+	std::vector<cv::Mat> separated(3);
+	cv::split(cvted, separated);
+	hue = separated.at(0).clone();
+
+	cv::namedWindow("Thresholded", cv::WINDOW_NORMAL);
+
+	cv::createTrackbar("hueMin", "Thresholded", &minHue, 255, threshold);
+	cv::createTrackbar("hueMax", "Thresholded", &maxHue, 255, threshold);
+
+	// Do the image processing once initially (parameters have no significance)
+	threshold(1, NULL);
+
+	cv::waitKey(0);
+
+	return 0;
+}
+#endif
+
+#include<opencv2\core\core.hpp>
+#include <opencv2\opencv.hpp>
+#include<vector>
+
+using namespace cv;
+using namespace std;
+
+int main(int argc, char** argv)
+{
+
+	// 读取RBG图片，转成Lab模式
+	Mat bgr_image = imread("e:/LEFTIMAGE_.tif",1);
+	if (!bgr_image.rows) {
+		cout << "imread failed!" << endl;
+		return 0;
+	}
+	if (bgr_image.channels() == 1) {
+		cv::Mat tmp;
+		cv::cvtColor(bgr_image, tmp, cv::COLOR_GRAY2BGR, 3);
+		bgr_image = tmp;
+	}
+	Mat lab_image;
+	cvtColor(bgr_image, lab_image, CV_BGR2Lab);
+
+	// 提取L通道
+	vector<Mat> lab_planes(3);
+	split(lab_image, lab_planes);
+
+	// CLAHE 算法
+	Ptr<CLAHE> clahe = createCLAHE();
+	clahe->setClipLimit(4);
+	Mat dst;
+	clahe->apply(lab_planes[0], dst);
+	dst.copyTo(lab_planes[0]);
+	merge(lab_planes, lab_image);
+
+	// 恢复RGB图像
+	Mat image_clahe;
+	cvtColor(lab_image, image_clahe, CV_Lab2BGR);
+
+	// 打印结果
+	imshow("原始图片", bgr_image);
+	imshow("CLAHE处理", image_clahe);
+	waitKey();
+
+	Mat image = image_clahe; Mat new_image = Mat::zeros(image.size(), image.type());
+	int alpha = 3.0;
+	int beta = 100;
+	/// Do the operation new_image(i,j) = alpha*image(i,j) + beta
+	for (int y = 0; y < image.rows; y++)
+	{
+		for (int x = 0; x < image.cols; x++)
+		{
+			for (int c = 0; c < 3; c++)
+			{
+				new_image.at<Vec3b>(y, x)[c] =
+					saturate_cast<uchar>(alpha*(image.at<Vec3b>(y, x)[c]) + beta);
+			}
+		}
+	}
+
+	/// Create Windows
+	namedWindow("Original Image", 1);
+	namedWindow("New Image", 1);
+
+	/// Show stuff
+	imshow("Original Image", image);
+	imshow("New Image", new_image);
+	waitKey();
+
+	Mat img = new_image;
+	cvtColor(new_image, img, cv::COLOR_RGB2GRAY,1);
+	Mat imgLaplacian; Mat imgResult;
+	Mat kernel = (Mat_<float>(3, 3) <<
+		1, 1, 1,
+		1, -8, 1,
+		1, 1, 1);
+	
+	// another approximation of second derivate, more stronger
+
+	// do the laplacian filtering as it is
+	// well, we need to convert everything in something more deeper then CV_8U
+	// because the kernel has some negative values, 
+	// and we can expect in general to have a Laplacian image with negative values
+	// BUT a 8bits unsigned int (the one we are working with) can contain values from 0 to 255
+	// so the possible negative number will be truncated
+	filter2D(img, imgLaplacian, CV_32F, kernel);
+	img.convertTo(img, CV_32F);
+	imgResult = img - imgLaplacian;
+	imgResult = imgResult + 180;
+
+	// convert back to 8bits gray scale
+	imgResult.convertTo(imgResult, CV_8U);
+	imgLaplacian.convertTo(imgLaplacian, CV_8U);
+
+	namedWindow("laplacian", CV_WINDOW_AUTOSIZE);
+	imshow("laplacian", imgLaplacian);
+
+	namedWindow("result", CV_WINDOW_AUTOSIZE);
+	imshow("result", imgResult);
+
+	waitKey();
+
+
 	return 0;
 }
