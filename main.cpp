@@ -751,6 +751,7 @@ int main(int argc, char** argv)
 }
 #endif
 
+#if 0
 #include <opencv2\opencv.hpp>
 #include <opencv2\imgcodecs.hpp>
 #include <opencv2\imgproc\imgproc.hpp>
@@ -777,10 +778,27 @@ int main()
 
 
 	Mat image = bgr_image;
-	//cvtColor(imgResult, img, cv::COLOR_GRAY2RGB, 3);
-	Mat new_image = Mat::zeros(image.size(), image.type());
-	int alpha = 3.0;
-	int beta = 100;
+	
+
+
+	cvtColor(bgr_image, frame, cv::COLOR_RGB2GRAY, 1);
+
+	while (true)
+	{
+		
+		//frame = imread("e:/LEFTIMAGE_.tif", CV_LOAD_IMAGE_GRAYSCALE);
+		performSUACE(frame, suaceResult, a, (b + 1) / 8.0); //perform SUACE with the parameters
+		imshow("SUACE", suaceResult);
+		imshow("Original", frame);
+		int response = waitKey(0);//press key to update
+		if (response == 32) //exit when spacebar key pressed;
+			break;
+	}
+
+	cvtColor(suaceResult, image, cv::COLOR_GRAY2RGB, 3);
+	Mat new_image = image;// Mat::zeros(image.size(), image.type());
+	int alpha = 1.0;
+	int beta = 50;
 	/// Do the operation new_image(i,j) = alpha*image(i,j) + beta
 	for (int y = 0; y < image.rows; y++)
 	{
@@ -793,18 +811,543 @@ int main()
 			}
 		}
 	}
+	/// Create Windows
+	//namedWindow("Original Image", 1);
+	namedWindow("New Image", 1);
 
-	cvtColor(new_image, frame, cv::COLOR_RGB2GRAY, 1);
-	while (true)
-	{
-		
-		//frame = imread("e:/LEFTIMAGE_.tif", CV_LOAD_IMAGE_GRAYSCALE);
-		performSUACE(frame, suaceResult, a, (b + 1) / 8.0); //perform SUACE with the parameters
-		imshow("SUACE", suaceResult);
-		imshow("Original", frame);
-		int response = waitKey(0);//press key to update
-		if (response == 32) //exit when spacebar key pressed;
-			break;
-	}
+	/// Show stuff
+	//imshow("Original Image", new_image);
+	imshow("New Image", new_image);
+
+	waitKey();
+
+	int i = 5;
+	Mat src = new_image; Mat dst;
+	cvtColor(new_image, src, cv::COLOR_RGB2GRAY, 1);
+	src = src + 30;
+						 // smooth the image in the "src" and save it to "dst"
+	blur(src, dst, Size(i, i));
+	imshow("blur filter", dst);
+
+	// Gaussian smoothing
+	GaussianBlur(src, dst, Size(i, i), 0, 0);
+	imshow("Gaussian filter", dst);
+
+	// Median smoothing
+	medianBlur(src, dst, i);
+
+	// show the blurred image with the text
+	imshow("Median filter", dst);
+
+	// Bilateral smoothing
+	bilateralFilter(src, dst, i, i * 2, i * 2);
+
+	//show the blurred image with the text
+	imshow("Bilateral filter", dst);
+
+	// wait for 5 seconds
+	waitKey(0);
 	return 0;
 }
+#endif
+
+#if 0
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+
+#include <iostream>
+
+using namespace std;
+
+
+void thresholdIntegral(cv::Mat &inputMat, cv::Mat &outputMat)
+{
+	// accept only char type matrices
+	CV_Assert(!inputMat.empty());
+	CV_Assert(inputMat.depth() == CV_8U);
+	CV_Assert(inputMat.channels() == 1);
+	CV_Assert(!outputMat.empty());
+	CV_Assert(outputMat.depth() == CV_8U);
+	CV_Assert(outputMat.channels() == 1);
+
+	// rows -> height -> y
+	int nRows = inputMat.rows;
+	// cols -> width -> x
+	int nCols = inputMat.cols;
+
+	// create the integral image
+	cv::Mat sumMat;
+	cv::integral(inputMat, sumMat);
+
+	CV_Assert(sumMat.depth() == CV_32S);
+	CV_Assert(sizeof(int) == 4);
+
+	int S = MAX(nRows, nCols) / 8;
+	double T = 0.15;
+
+	// perform thresholding
+	int s2 = S / 2;
+	int x1, y1, x2, y2, count, sum;
+
+	// CV_Assert(sizeof(int) == 4);
+	int *p_y1, *p_y2;
+	uchar *p_inputMat, *p_outputMat;
+
+	for (int i = 0; i < nRows; ++i)
+	{
+		y1 = i - s2;
+		y2 = i + s2;
+
+		if (y1 < 0) {
+			y1 = 0;
+		}
+		if (y2 >= nRows) {
+			y2 = nRows - 1;
+		}
+
+		p_y1 = sumMat.ptr<int>(y1);
+		p_y2 = sumMat.ptr<int>(y2);
+		p_inputMat = inputMat.ptr<uchar>(i);
+		p_outputMat = outputMat.ptr<uchar>(i);
+
+		for (int j = 0; j < nCols; ++j)
+		{
+			// set the SxS region
+			x1 = j - s2;
+			x2 = j + s2;
+
+			if (x1 < 0) {
+				x1 = 0;
+			}
+			if (x2 >= nCols) {
+				x2 = nCols - 1;
+			}
+
+			count = (x2 - x1)*(y2 - y1);
+
+			// I(x,y)=s(x2,y2)-s(x1,y2)-s(x2,y1)+s(x1,x1)
+			sum = p_y2[x2] - p_y1[x2] - p_y2[x1] + p_y1[x1];
+
+			if ((int)(p_inputMat[j] * count) < (int)(sum*(1.0 - T)))
+				p_outputMat[j] = 255;
+			else
+				p_outputMat[j] = 0;
+		}
+	}
+}
+
+
+int main(int argc, char *argv[])
+{
+	//! [load_image]
+		// Load the image
+	cv::Mat src = cv::imread("e:/LEFTIMAGE_.tif",0);
+
+	// Check if image is loaded fine
+	if (src.empty()) {
+		cerr << "Problem loading image!!!" << endl;
+		return -1;
+	}
+
+	// Show source image
+	cv::imshow("src", src);
+	//! [load_image]
+
+	//! [gray]
+		// Transform source image to gray if it is not
+	cv::Mat gray;
+
+	if (src.channels() == 3)
+	{
+		cv::cvtColor(src, gray, CV_BGR2GRAY);
+
+		// Show gray image
+		cv::imshow("gray", gray);
+	}
+	else
+	{
+		gray = src;
+	}
+
+	cout << "TEST" << endl;
+
+	//! [gray] 
+
+	//! [bin_1]
+	cv::Mat bw1;
+	cv::adaptiveThreshold(gray, bw1, 255, CV_ADAPTIVE_THRESH_MEAN_C, cv::THRESH_BINARY, 15, -2);
+
+	// Show binary image
+	cv::imshow("binary opencv", bw1);
+	//! [bin_1] 
+
+
+	//! [bin_2]
+	cv::Mat bw2 = cv::Mat::zeros(gray.size(), CV_8UC1);
+	thresholdIntegral(gray, bw2);
+
+	// Show binary image
+	cv::imshow("binary integral", bw2);
+	//! [bin_2] 
+
+	cv::waitKey(0);
+	return 0;
+}
+#endif
+
+#if 1
+#include <cstdio>
+#include <iostream>
+#include "opencv2/core.hpp"
+#include "opencv2/imgproc.hpp"
+#include "opencv2/highgui.hpp"
+#include "Curves.hpp"
+
+using namespace std;
+using namespace cv;
+
+static string window_name = "Photo";
+static Mat src;
+static Mat dst;
+static string curves_window = "Adjust Curves";
+static Mat curves_mat;
+static int channel = 0;
+Curves  curves;
+
+static void invalidate()
+{
+	curves.draw(curves_mat);
+	imshow(curves_window, curves_mat);
+
+	
+	curves.adjust(src, dst);
+	imshow(window_name, dst);
+
+	int y, x;
+	uchar *p;
+
+	y = 150; x = 50;
+	p = dst.ptr<uchar>(y) + x * 3;
+	cout << "(" << int(p[2]) << ", " << int(p[1]) << ", " << int(p[0]) << ")  ";
+
+	y = 150; x = 220;
+	p = dst.ptr<uchar>(y) + x * 3;
+	cout << "(" << int(p[2]) << ", " << int(p[1]) << ", " << int(p[0]) << ")  ";
+
+	y = 150; x = 400;
+	p = dst.ptr<uchar>(y) + x * 3;
+	cout << "(" << int(p[2]) << ", " << int(p[1]) << ", " << int(p[0]) << ")  " << endl;
+}
+
+static void callbackAdjustChannel(int, void *)
+{
+	switch (channel) {
+	case 3:
+		curves.CurrentChannel = &curves.BlueChannel;
+		break;
+	case 2:
+		curves.CurrentChannel = &curves.GreenChannel;
+		break;
+	case 1:
+		curves.CurrentChannel = &curves.RedChannel;
+		break;
+	default:
+		curves.CurrentChannel = &curves.RGBChannel;
+		break;
+	}
+
+
+	invalidate();
+}
+
+static void callbackMouseEvent(int mouseEvent, int x, int y, int flags, void* param)
+{
+	switch (mouseEvent) {
+	case CV_EVENT_LBUTTONDOWN:
+		curves.mouseDown(x, y);
+		invalidate();
+		break;
+	case CV_EVENT_MOUSEMOVE:
+		if (curves.mouseMove(x, y))
+			invalidate();
+		break;
+	case CV_EVENT_LBUTTONUP:
+		curves.mouseUp(x, y);
+		invalidate();
+		break;
+	}
+	return;
+}
+
+
+int main()
+{
+	//read image file
+	src = imread("e:/LEFTIMAGE_.tif",0);
+	if (!src.data) {
+		cout << "error read image" << endl;
+		return -1;
+	}
+	cvtColor(src, src, cv::COLOR_GRAY2RGB, 3);
+	//create window
+	namedWindow(window_name);
+	imshow(window_name, src);
+
+	//create Mat for curves
+	curves_mat = Mat::ones(256, 256, CV_8UC3);
+
+	//create window for curves
+	namedWindow(curves_window);
+	setMouseCallback(curves_window, callbackMouseEvent, NULL);
+	createTrackbar("Channel", curves_window, &channel, 3, callbackAdjustChannel);
+
+
+	// 范例：用程序代码在Red通道中定义一条曲线
+	//	curves.RedChannel.clearPoints();
+	//	curves.RedChannel.addPoint( Point(10,  10) );
+	//	curves.RedChannel.addPoint( Point(240, 240) );
+	//	curves.RedChannel.addPoint( Point(127, 127) );
+
+	invalidate();
+
+
+	waitKey();
+	cvtColor(src, src, cv::COLOR_RGB2GRAY, 1);
+	imwrite("Histogram_equalized.tif", dst);
+	return 0;
+
+}
+#endif
+
+#if 0
+#include <iostream>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+
+using namespace cv;
+using namespace std;
+
+void imhist(Mat image, int histogram[])
+{
+
+
+	for (int i = 0; i < 256; i++)
+	{
+		histogram[i] = 0;
+	}
+
+
+	for (int y = 0; y < image.rows; y++)
+		for (int x = 0; x < image.cols; x++)
+			histogram[(int)image.at<uchar>(y, x)]++;
+
+}
+
+void cumhist(int histogram[], int cumhistogram[])
+{
+	cumhistogram[0] = histogram[0];
+
+	for (int i = 1; i < 256; i++)
+	{
+		cumhistogram[i] = histogram[i] + cumhistogram[i - 1];
+	}
+}
+
+
+void cumgoshist(float histogram[], float cumhistogram[])
+{
+	cumhistogram[0] = histogram[0];
+
+	for (int i = 1; i < 256; i++)
+	{
+		cumhistogram[i] = histogram[i] + cumhistogram[i - 1];
+	}
+}
+
+void histDisplay(int histogram[], const char* name)
+{
+	int hist[256];
+	for (int i = 0; i < 256; i++)
+	{
+		hist[i] = histogram[i];
+	}
+
+	int hist_w = 512; int hist_h = 400;
+	int bin_w = cvRound((double)hist_w / 256);
+
+	Mat histImage(hist_h, hist_w, CV_8UC1, Scalar(255, 255, 255));
+
+
+	int max = hist[0];
+	for (int i = 1; i < 256; i++) {
+		if (max < hist[i]) {
+			max = hist[i];
+		}
+	}
+
+	for (int i = 0; i < 256; i++) {
+		hist[i] = ((double)hist[i] / max)*histImage.rows;
+	}
+
+
+
+	for (int i = 0; i < 256; i++)
+	{
+		line(histImage, Point(bin_w*(i), hist_h),
+			Point(bin_w*(i), hist_h - hist[i]),
+			Scalar(0, 0, 0), 1, 8, 0);
+	}
+
+	namedWindow(name, CV_WINDOW_AUTOSIZE);
+	imshow(name, histImage);
+}
+
+void histDis(float histogram[], const char* name)
+{
+	float hist[256];
+	for (int i = 0; i < 256; i++)
+	{
+		hist[i] = histogram[i];
+	}
+
+	int hist_w = 512; int hist_h = 400;
+	int bin_w = cvRound((double)hist_w / 256);
+
+	Mat histImage(hist_h, hist_w, CV_8UC1, Scalar(255, 255, 255));
+
+
+	float max = hist[0];
+	for (int i = 1; i < 256; i++) {
+		if (max < hist[i]) {
+			max = hist[i];
+		}
+	}
+
+
+
+	for (int i = 0; i < 256; i++) {
+		hist[i] = ((double)hist[i] / max)*histImage.rows;
+	}
+
+
+
+	for (int i = 0; i < 256; i++)
+	{
+		line(histImage, Point(bin_w*(i), hist_h),
+			Point(bin_w*(i), hist_h - hist[i]),
+			Scalar(0, 0, 0), 1, 8, 0);
+	}
+
+
+	namedWindow(name, CV_WINDOW_AUTOSIZE);
+	imshow(name, histImage);
+}
+
+int main()
+{
+
+	Mat image = imread("e:/LEFTIMAGE_.tif", 0);
+
+
+	int histogram[256];
+	imhist(image, histogram);
+
+
+	int size = image.rows * image.cols;
+	float alpha = 255.0 / size;
+
+
+	float PrRk[256];
+	for (int i = 0; i < 256; i++)
+	{
+		PrRk[i] = (double)histogram[i] / size;
+	}
+
+
+	int cumhistogram[256];
+	float cumgos[256];
+	cumhist(histogram, cumhistogram);
+
+
+	int Sk[256];
+	for (int i = 0; i < 256; i++)
+	{
+		Sk[i] = cvRound((double)cumhistogram[i] * alpha);
+	}
+
+
+	float gos[256];
+	float sigma;
+	int median;
+	cout << "Enter value of sigma : " << endl;
+	cin >> sigma;
+	cout << "Enter value of median : " << endl;
+	cin >> median;
+
+
+	for (int i = -median; i < 255 - median; i++)
+	{
+		float value = (1 / sqrt(2 * 3.1416)*sigma)*exp(-(pow(i, 2) / (2 * pow(sigma, 2))));
+		gos[i + median] = value;
+	}
+
+	histDis(gos, "Gaussian Histogram");
+	cumgoshist(gos, cumgos);
+	float Gz[256];
+	for (int i = 0; i < 256; i++)
+	{
+		Gz[i] = cvRound((double)cumgos[i] * alpha);
+	}
+
+	Mat new_image = image.clone();
+
+	for (int y = 0; y < 256; y++)
+	{
+		for (int x = 0; x < 256; x++)
+		{
+			if (Sk[y] == Gz[x] || abs(Sk[y] - Gz[x]) == 1)
+			{
+				Sk[y] = x;
+				break;
+			}
+		}
+	}
+
+	for (int y = 0; y < image.rows; y++)
+		for (int x = 0; x < image.cols; x++)
+			new_image.at<uchar>(y, x) = saturate_cast<uchar>(Sk[image.at<uchar>(y, x)]);
+
+
+	float PsSk[256];
+	for (int i = 0; i < 256; i++)
+	{
+		PsSk[i] = 0;
+	}
+
+	for (int i = 0; i < 256; i++)
+	{
+		PsSk[Sk[i]] += PrRk[i];
+	}
+
+	int final[256];
+	for (int i = 0; i < 256; i++)
+		final[i] = cvRound(PsSk[i] * 255);
+
+
+	namedWindow("Original Image");
+	imshow("Original Image", image);
+
+	histDisplay(histogram, "Original Histogram");
+
+
+
+	namedWindow("Equilized Image");
+	imshow("Equilized Image", new_image);
+
+	histDisplay(final, "Equilized Histogram");
+
+	waitKey();
+	return 0;
+}
+#endif
