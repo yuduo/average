@@ -995,7 +995,7 @@ int main(int argc, char *argv[])
 }
 #endif
 
-#if 1
+#if 0
 #include <cstdio>
 #include <iostream>
 #include "opencv2/core.hpp"
@@ -1350,4 +1350,293 @@ int main()
 	waitKey();
 	return 0;
 }
+#endif
+
+
+
+# if 1
+#include <cstdio>
+#include <iostream>
+#include "opencv2/core.hpp"
+#include "opencv2/imgproc.hpp"
+#include "opencv2/highgui.hpp"
+
+#include "Levels.hpp"
+
+using namespace std;
+using namespace cv;
+
+static string window_name = "Photo";
+static Mat src;
+
+static Mat levels_mat;
+static string levels_window = "Adjust Levels";
+static int channel = 0;
+Levels  levels;
+
+int   Shadow;
+int   Midtones = 100;
+int   Highlight;
+int   OutputShadow;
+int   OutputHighlight;
+Mat dst;
+static void invalidate()
+{
+	
+	levels.adjust(src, dst);
+	imshow(window_name, dst);
+
+	imshow(levels_window, levels_mat);
+}
+
+static void channelRead(int which_channel)
+{
+	channel = which_channel;
+	Level * CurrentChannel = NULL;
+	switch (channel) {
+	case 0: CurrentChannel = &levels.RGBChannel; break;
+	case 1: CurrentChannel = &levels.RedChannel; break;
+	case 2: CurrentChannel = &levels.GreenChannel; break;
+	case 3: CurrentChannel = &levels.BlueChannel; break;
+	}
+	if (CurrentChannel == NULL) return;
+
+	Shadow = CurrentChannel->Shadow;
+	Midtones = int(CurrentChannel->Midtones * 100);
+	Highlight = CurrentChannel->Highlight;
+	OutputShadow = CurrentChannel->OutputShadow;
+	OutputHighlight = CurrentChannel->OutputHighlight;
+
+}
+
+static void channelWrite()
+{
+	Level * CurrentChannel = NULL;
+	switch (channel) {
+	case 0: CurrentChannel = &levels.RGBChannel; break;
+	case 1: CurrentChannel = &levels.RedChannel; break;
+	case 2: CurrentChannel = &levels.GreenChannel; break;
+	case 3: CurrentChannel = &levels.BlueChannel; break;
+	}
+
+	if (CurrentChannel == NULL)
+		return;
+
+	CurrentChannel->Shadow = Shadow;
+	CurrentChannel->Midtones = Midtones / 100.0;
+	CurrentChannel->Highlight = Highlight;
+	CurrentChannel->OutputShadow = OutputShadow;
+	CurrentChannel->OutputHighlight = OutputHighlight;
+
+	invalidate();
+}
+
+
+static void callbackAdjust(int, void *)
+{
+	channelWrite();
+	invalidate();
+}
+
+
+static void callbackAdjustChannel(int, void *)
+{
+	channelRead(channel);
+	setTrackbarPos("Shadow", levels_window, Shadow);
+	setTrackbarPos("Midtones", levels_window, Midtones);
+	setTrackbarPos("Highlight", levels_window, Highlight);
+	setTrackbarPos("OutShadow", levels_window, OutputShadow);
+	setTrackbarPos("OutHighlight", levels_window, OutputHighlight);
+	invalidate();
+}
+
+
+int main()
+{
+	//read image file
+	src = imread("e:/LEFTIMAGE_.tif", CV_LOAD_IMAGE_GRAYSCALE | CV_LOAD_IMAGE_ANYDEPTH);
+	src.convertTo(src, CV_8U, 0.00390625);
+	cvtColor(src, src, CV_GRAY2RGB);
+	if (!src.data) {
+		cout << "error read image" << endl;
+		return -1;
+	}
+
+	//create window
+	namedWindow(window_name);
+	imshow(window_name, src);
+
+
+	//create window for levels
+	namedWindow(levels_window);
+	levels_mat = Mat::ones(100, 400, CV_8UC3);
+	levels_mat.setTo(Scalar(255, 255, 255));
+	imshow(levels_window, levels_mat);
+
+	channelRead(0);
+	createTrackbar("Channel", levels_window, &channel, 3, callbackAdjustChannel);
+	createTrackbar("Shadow", levels_window, &Shadow, 255, callbackAdjust);
+	createTrackbar("Midtones", levels_window, &Midtones, 200, callbackAdjust);
+	createTrackbar("Highlight", levels_window, &Highlight, 255, callbackAdjust);
+	createTrackbar("OutShadow", levels_window, &OutputShadow, 255, callbackAdjust);
+	createTrackbar("OutHighlight", levels_window, &OutputHighlight, 255, callbackAdjust);
+
+	waitKey();
+	imwrite("des.tif", dst);
+	return 0;
+
+}
+#endif
+
+#if 0
+
+#include <corecrt_math_defines.h>
+#include <iostream>
+#include "opencv2/core.hpp"
+#include "opencv2/imgproc.hpp"
+#include "opencv2/highgui.hpp"
+
+using namespace std;
+using namespace cv;
+
+
+#define SWAP(a, b, t)  do { t = a; a = b; b = t; } while(0)
+#define CLIP_RANGE(value, min, max)  ( (value) > (max) ? (max) : (((value) < (min)) ? (min) : (value)) )
+#define COLOR_RANGE(value)  CLIP_RANGE(value, 0, 255)
+
+/**
+ * Adjust Brightness and Contrast
+ *
+ * @param src [in] InputArray
+ * @param dst [out] OutputArray
+ * @param brightness [in] integer, value range [-255, 255]
+ * @param contrast [in] integer, value range [-255, 255]
+ *
+ * @return 0 if success, else return error code
+ */
+int adjustBrightnessContrast(InputArray src, OutputArray dst, int brightness, int contrast)
+{
+	Mat input = src.getMat();
+	if (input.empty()) {
+		return -1;
+	}
+
+	dst.create(src.size(), src.type());
+	Mat output = dst.getMat();
+
+	brightness = CLIP_RANGE(brightness, -255, 255);
+	contrast = CLIP_RANGE(contrast, -255, 255);
+
+	/**
+	Algorithm of Brightness Contrast transformation
+	The formula is:
+		y = [x - 127.5 * (1 - B)] * k + 127.5 * (1 + B);
+
+		x is the input pixel value
+		y is the output pixel value
+		B is brightness, value range is [-1,1]
+		k is used to adjust contrast
+			k = tan( (45 + 44 * c) / 180 * PI );
+			c is contrast, value range is [-1,1]
+	*/
+
+	double B = brightness / 255.;
+	double c = contrast / 255.;
+	double k = tan((45 + 44 * c) / 180 * M_PI);
+
+	Mat lookupTable(1, 256, CV_16U);
+	uchar *p = lookupTable.data;
+	for (int i = 0; i < 256; i++)
+		p[i] = COLOR_RANGE((i - 127.5 * (1 - B)) * k + 127.5 * (1 + B));
+
+	LUT(input, lookupTable, output);
+
+	return 0;
+}
+
+
+//=====主程序开始====
+
+static string window_name = "photo";
+static Mat src;
+static int brightness = 255;
+static int contrast = 255;
+
+static void callbackAdjust(int, void *)
+{
+	Mat dst;
+	adjustBrightnessContrast(src, dst, brightness - 255, contrast - 255);
+	imshow(window_name, dst);
+}
+
+
+int main()
+{
+	src = imread("e:/LEFTIMAGE_.tif", CV_LOAD_IMAGE_GRAYSCALE | CV_LOAD_IMAGE_ANYDEPTH);
+
+	if (!src.data) {
+		cout << "error read image" << endl;
+		return -1;
+	}
+
+	namedWindow(window_name);
+	createTrackbar("brightness", window_name, &brightness, 2 * brightness, callbackAdjust);
+	createTrackbar("contrast", window_name, &contrast, 2 * contrast, callbackAdjust);
+	callbackAdjust(0, 0);
+
+	waitKey();
+
+	return 0;
+
+}
+#endif
+#if 0
+
+Mat& ScanImageAndReduceC_16UC1(Mat& I, const unsigned short* const table)
+{
+	// accept only char type matrices
+	CV_Assert(I.depth() != sizeof(uchar));
+
+	int channels = I.channels();
+
+	int nRows = I.rows;
+	int nCols = I.cols * channels;
+
+	if (I.isContinuous())
+	{
+		nCols *= nRows;
+		nRows = 1;
+	}
+
+	int i, j;
+	unsigned short* p = (unsigned short*)I.data;
+	for (unsigned int i = 0; i < nCols*nRows; ++i)
+		*p++ = table[*p];
+
+	return I;
+}
+
+int main()
+{
+	Size Img_Size(320, 240);
+	Mat Img_Source_16 = imread("e:/LEFTIMAGE_.tif", CV_LOAD_IMAGE_GRAYSCALE | CV_LOAD_IMAGE_ANYDEPTH);
+	Mat Img_Destination_16;
+
+	unsigned short LookupTable[4096];
+	for (int i = 0; i < 4096; i++)
+	{
+		LookupTable[i] = 4096 - i;
+	}
+
+	
+	imshow("Img_Source", Img_Source_16);
+
+	
+	Img_Destination_16 = ScanImageAndReduceC_16UC1(Img_Source_16.clone(), LookupTable);
+
+	imshow("Img_Destination", Img_Destination_16);
+	waitKey();
+	return 0;
+}
+
 #endif
