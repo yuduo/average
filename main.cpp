@@ -3539,8 +3539,15 @@ int main()
 #include "opencv2/core.hpp"
 #include "opencv2/imgproc.hpp"
 #include "opencv2/highgui.hpp"
+#include "Levels.hpp"
+
 using namespace std;
 using namespace cv;
+
+Levels  levels;
+static Mat levels_mat;
+static string levels_window = "Adjust Levels";
+
 int sobel_y[9] = { 1, 2, 1, 0, 0, 0, -1, -2, -1 };  //y方向sobel算子 
 int sobel_x[9] = { 1, 0, -1, 2, 0, -2, 1, 0, -1 };  //x方向sobel算子 
 void sobel(int width,int height, CvScalar s, IplImage *image)
@@ -3656,6 +3663,24 @@ cv::Mat mean_filter(cv::Mat& image_in, int kernel)
 
 	return image_out;
 }
+
+void drawHist(const Mat &src, Mat &dst)
+{
+	int histSize = 256;
+	float histMax = 0;
+	for (int i = 0; i < histSize; i++) {
+		float temp = src.at<float>(i);
+		if (histMax < temp) {
+			histMax = temp;
+		}
+	}
+
+	float scale = (0.9 * 256) / histMax;
+	for (int i = 0; i < histSize; i++) {
+		int intensity = static_cast<int>(src.at<float>(i)*scale);
+		line(dst, Point(i, 255), Point(i, 255 - intensity), Scalar(0));
+	}
+}
 int main()
 {
 	//read image file
@@ -3665,15 +3690,45 @@ int main()
 	size_t nsize = width * height;
 
 	unsigned short *data = new unsigned short[nsize];
-	unsigned short *chR = new unsigned short[nsize];
+	unsigned short *tdata = new unsigned short[nsize];
+	unsigned char *chR = new unsigned char[nsize];
 	if (data == NULL)
 	{
 		std::cout << "data space malloc failed" << std::endl;
 	}
+	
+	//Mat src= Mat(height, width, CV_16UC1);;
+	/*for (int i = 0; i < 8; i++)
+	{
+		FILE *file;
+		char buff[50];
+		sprintf(buff, "F:\\2.1-85\\image_0%d.raw", i);
+		fopen_s(&file, buff, "rb+");
+		fread(data, sizeof(unsigned short), nsize, file);
+		fclose(file);
+		Mat t = Mat(height, width, CV_16UC1, data);
+		add(src, t, src);
+	}*/
 	FILE *file;
-	fopen_s(&file, "f:\\11111.raw", "rb+");
-	fread(data, sizeof(unsigned short), nsize, file);
-	fclose(file);
+
+	for (int i = 0; i < 8; i++) {
+		string filename = "";
+		sprintf((char*)filename.c_str(), "F:\\2.1-85\\image_0%d.raw", i);
+		file = fopen(filename.c_str(), "rb+");
+		fread(data, sizeof(unsigned short), nsize, file);
+		fclose(file);
+
+		for (int j = 0; j < nsize; j++) {
+
+			tdata[j] = tdata[j] + data[j];
+		}
+
+		data = new unsigned short[nsize];
+	}
+	for (int j = 0; j < nsize; j++) {
+
+		tdata[j] = tdata[j] / 8;
+	}
 
 	for (int n = 0; n < nsize; n++)
 	{
@@ -3683,16 +3738,89 @@ int main()
 
 	}
 
-	Mat src = Mat(height, width, CV_8UC1, chR);
+	Mat src = Mat(height, width, CV_16UC1, tdata);
 	if (!src.data) {
 		cout << "error read image" << endl;
 		return -1;
 	}
-	Mat dst,sob,img2,img3,img4,img5,img6,img7,img8;
+
+
+	std::vector<int> hist(65536);
+	int rows = src.rows;
+	int cols = src.cols;
+	for (int r = 0; r < rows; r++)
+	{
+		for (int c = 0; c < cols; c++)
+		{
+			int index = int(src.at<ushort>(r, c));
+			hist.at(index) += 1;
+		}
+	}
+	int min = 65535;
+	int max = 0;
+	for (int i = 0; i < hist.size(); i++)
+	{
+		int val = hist.at(i);
+		if (val < 20)//20)
+		{
+			continue;
+		}
+		min = i < min ? i : min;
+		max = i > max ? i : max;
+	}
+	ushort m = 0x8ae;
+	//min = 0x3e8;
+	ushort k = 65535 / (max - min);
+	for (int r = 0; r < rows - 1; r++)
+	{
+		for (int c = 0; c < cols; c++)
+		{
+			//if (src.at<ushort>(r, c) > 5000) {
+			//	src.at<ushort>(r, c) = 65535;
+			//	
+			//}
+			//if (src.at<ushort>(r, c) > 3955) {
+			//	//src.at<ushort>(r, c) = 65535;// src.at<ushort>(r, c) + 1;
+			//}else
+			//src.at<ushort>(r, c) = src.at<ushort>(r, c) * (65535 - min ) / (max - min) + 1 * min; // 线性映射
+
+			if (src.at<ushort>(r, c)<min)
+			{
+				src.at<ushort>(r, c) = 65535;
+			}
+			else if (src.at<ushort>(r, c) < max && src.at<ushort>(r, c)>m)
+			{
+				src.at<ushort>(r, c) = k * (src.at<ushort>(r, c) );
+			}
+			else {
+				src.at<ushort>(r, c) =(src.at<ushort>(r, c) )/k;
+			}
+		}
+	}
+	Mat hist1;
+	int histSize = 256;
+	float range[] = { 0, 255 };
+	const float* histRange = { range };
+	calcHist(&src, 1, 0, Mat(), hist1, 1, &histSize, &histRange);
+	Mat showHist1(256, 256, CV_8UC1, Scalar(256));
+	drawHist(hist1, showHist1);
+	namedWindow("Histogram(Original)", CV_WINDOW_AUTOSIZE);
+	imshow("Histogram(Original)", showHist1);
+	//assert(src.type() == CV_8UC1);
+	//图像反转
+	//for (int i = 0; i < src.rows; i++)
+	//{
+	//	for (int j = 0; j < src.cols; j++)
+	//	{
+	//		src.at<ushort>(i, j) = 65535 - src.at<ushort>(i, j);   // 每一个像素反转
+	//	}
+	//}
+	Mat dst,sob,img2,img3,img4,img5,img6,img7,img8,temp, gradx, grady;
 	//create window
-	//namedWindow("window_name");
-	//imshow("window_name", src);
-	//resize(src, src, cv::Size(), 0.5, 0.5);
+	namedWindow("window_name");
+	resize(src, temp, cv::Size(), 0.5, 0.5);
+	imshow("window_name", temp);
+	
 
 	Mat kernel = (Mat_<float>(3, 3) <<
 		-1, -1, -1,
@@ -3710,36 +3838,96 @@ int main()
 				  // and we can expect in general to have a Laplacian image with negative values
 				  // BUT a 8bits unsigned int (the one we are working with) can contain values from 0 to 255
 				  // so the possible negative number will be truncated
-	filter2D(src, dst, CV_8U, kernel);
+	filter2D(src, dst, CV_16UC1, kernel);
 	
-	cv::add(src, dst, img2 , noArray(), CV_8U);
+	namedWindow("window_name2");
+	resize(dst, temp, cv::Size(), 0.5, 0.5);
+	imshow("window_name2", temp);
+
+	cv::add(src, dst, img2 , noArray(), CV_16UC1);
 	//Laplacian(src, dst, CV_8U);
 	//resize(dst, dst, cv::Size(), 0.5, 0.5);
 	//show the blurred image with the text
 	//imshow("Laplacian filter", img2);
 
+	namedWindow("window_name3");
+	resize(img2, temp, cv::Size(), 0.5, 0.5);
+	imshow("window_name3", temp);
+	imwrite("window_name3.bmp", img2);
 	CvScalar s;
 	//sobel(width, height, s, src);
-	Sobel(src, img3, CV_8U, 1, 1);
+	//Sobel(src, img3, CV_16UC1, 1, 1, 3, 1, 0, BORDER_DEFAULT);
 	//imshow("Sobel filter", img3);
+	Mat hx = (Mat_<float>(3, 3) << 
+		-1, -2, -1,
+		0, 0, 0,
+		1, 2, 1);
+	filter2D(img2, gradx, -1, hx, cv::Point(-1, -1), 0, cv::BORDER_CONSTANT);
+
+	Mat hy = (Mat_<float>(3, 3) << 
+		-1, 0, 1,
+		-2, 0, 2,
+		-1, 0, 1);
+	filter2D(img2, grady, -1, hy, cv::Point(-1, -1), 0, cv::BORDER_CONSTANT);
+	add(gradx, grady, img3, noArray(), CV_16UC1);
+
+	namedWindow("window_name4");
+
+	resize(img3, temp, cv::Size(), 0.5, 0.5);
+	imshow("window_name4", temp);
 
 	img4 = img3.clone();
 	//AverFiltering(img3, img4);
-	img4 = mean_filter(img3, 5);
+	//img4 = mean_filter(img3, 5);
+	blur(img3, img4, Size(5,5));
 
+	namedWindow("window_name5");
+	resize(img4, temp, cv::Size(), 0.5, 0.5);
+	imshow("window_name5", temp);
+
+
+	//imwrite("window_name5.png", temp);
+
+	/*img2.convertTo(img2, CV_16UC1);
+	img4.convertTo(img4, CV_16UC1);
 	img5 = img2.mul(img4);
-	
-	cv::add(src, img5, img6, noArray(), CV_8U);
+	img5.convertTo(img5, CV_16UC1);*/
+	cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0, cv::Size(8, 8));
 
+	clahe->apply(img4, img5);
+	
+
+	namedWindow("window_name6");
+	resize(img5, temp, cv::Size(), 0.5, 0.5);
+	imshow("window_name6", temp);
+
+	//assert(img5.type() == CV_8UC1);
+	cv::add(src, img5, img6, noArray(), CV_16UC1);
+
+	namedWindow("window_name6");
+	resize(img5, temp, cv::Size(), 0.5, 0.5);
+	imshow("window_name6", temp);
+
+	//assert(img6.type() == CV_8UC1);
 	img7 = img6.clone();
-	try {
+	//assert(img7.channels() == 1);
+	//try {
 		//cv::pow(img6, 0.5f, img7);
-		resize(img7, img8, cv::Size(), 0.3, 0.3);
+		for (int i = 0; i < img6.rows; i++)
+		{
+			for (int j = 0; j < img6.cols; j++) {
+				short d = img6.at<short>(i, j);
+				double m;
+				m=pow(d, 0.5f);
+				img7.at<short>(i, j)= static_cast<short>(m);
+			}
+		}
+		resize(img7, img8, cv::Size(), 0.5, 0.5);
 		imshow("final", img8);
-	}catch (cv::Exception& e) {
+	/*}catch (cv::Exception& e) {
 		const char* err_msg = e.what();
 		std::cout << "exception caught: " << err_msg << std::endl;
-	}
+	}*/
 	
 	
 	waitKey(0);
