@@ -2987,33 +2987,92 @@ int computeOutput(int x, int r1, int s1, int r2, int s2)
 
 using namespace cv;
 using namespace std;
+int window_center=1268, window_width=16002;
+int width = 1536; int height = 1920;
+Mat mat;
+unsigned short *pdata;
+void change(int, void*)
+{
+	double dFactor,min,max;
+	int nPixelVal;
 
+	min = (2 * window_center - window_width) / 2.0 + 0.5;
+	max = (2 * window_center + window_width) / 2.0 + 0.5;
+
+	dFactor = 255.0 / (double)(max - min);
+	
+	/*for (int r = 0; r < mat.rows; r++)
+	{
+		for (int c = 0; c < mat.cols; c++)
+		{
+			ushort v = mat.at<ushort>(r, c);
+			if (v < min) {
+				m.at<ushort>(r, c) = 0;
+				continue;
+			}
+			if (v > max) {
+				m.at<ushort>(r, c) = 255;
+				continue;
+			}
+
+			nPixelVal = (ushort)((v - min)*dFactor);
+
+			if (nPixelVal < 0) m.at<ushort>(r, c) = 0;
+			else if (nPixelVal > 255) m.at<ushort>(r, c) = 255;
+			else m.at<ushort>(r, c) = nPixelVal;
+		}
+	}*/
+	ushort disp_pixel_val;
+	unsigned short *t = new unsigned short[width*height];
+	for (int i = 0; i < width*height; i++) {
+		ushort pixel_val = pdata[i];
+		if (pixel_val < min) {
+			disp_pixel_val = 0;
+			continue;
+		}
+		if (pixel_val > max) {
+			disp_pixel_val = 255;
+			continue;
+		}
+
+		nPixelVal = (int)((pixel_val - min)*dFactor);
+
+		if (nPixelVal < 0) disp_pixel_val = 0;
+		else if (nPixelVal > 255) disp_pixel_val = 255;
+		else disp_pixel_val = nPixelVal;
+		t[i] = disp_pixel_val;
+
+	}
+	Mat m(height, width, CV_16UC1, t);
+	resize(m, m, Size(), 0.5, 0.5);
+	imshow("New Image", m);
+}
 int main(int ac, char *av[])
 {
-	int width = 1536; int height = 1920;
+	
 	size_t nsize = width * height;
-	unsigned short *data = new unsigned short[nsize];
+	pdata = new unsigned short[nsize];
 	unsigned short *tdata = new unsigned short[nsize];
 	memset(tdata, 0, sizeof(unsigned short)*nsize);
-	if (data == NULL)
+	if (pdata == NULL)
 	{
-		std::cout << "data space malloc failed" << std::endl;
+		std::cout << "pdata space malloc failed" << std::endl;
 	}
 	FILE *file;
 	
-	for (int i = 0; i < 8; i++) {
+	for (int i = 0; i < 1; i++) {
 		string filename = "";
 		sprintf((char*)filename.c_str(), "f:\\image_0%d.raw", i);
 		file = fopen(filename.c_str(), "rb+");
-		fread(data, sizeof(unsigned short), nsize, file);
+		fread(pdata, sizeof(unsigned short), nsize, file);
 		fclose(file);
 		
 		for (int j = 0; j < nsize; j++) {
 			
-			tdata[j] = tdata[j]+data[j];
+			tdata[j] = tdata[j]+pdata[j];
 		}
 		
-		data = new unsigned short[nsize];
+		//pdata = new unsigned short[nsize];
 	}
 	for (int j = 0; j < nsize; j++) {
 		
@@ -3026,18 +3085,28 @@ int main(int ac, char *av[])
 	//Mat imageBGR = test.clone();
 	//cvtColor(test, imageBGR, CV_GRAY2BGR555);
 	
-	cv::Mat temp(height, width, CV_16UC1, tdata);//单通道的Mat raw数据
-	cv::Mat mtep[3];
-	temp.copyTo(mtep[0]);
-	temp.copyTo(mtep[1]);
-	temp.copyTo(mtep[2]);
-
-	cv::Mat mergeM(height, width, CV_16UC3);
-	cv::merge(mtep, 3, mergeM);
+	cv::Mat temp(height, width, CV_16UC1, pdata);//单通道的Mat raw数据
+	mat = Mat(height, width, CV_16UC1, pdata);
 	
+	/*for (int r = 0; r < mat.rows; r++)
+	{
+		for (int c = 0; c < mat.cols; c++)
+		{
+			ushort v = mat.at<ushort>(r, c);
+			
+			mat.at<ushort>(r, c) = 65535-v;
+			
+		}
+	}*/
+
 	namedWindow("New Image", 1);
-	imshow("New Image", mergeM);
-	resizeWindow("New Image", 600, 600);
+	createTrackbar("window_center", "New Image", &window_center, 65535, change);
+	createTrackbar("window_width", "New Image", &window_width, 65535, change);
+	
+	resize(mat, temp, Size(), 0.5, 0.5);
+	imshow("New Image", temp);
+	
+
 	waitKey();
 	return 0;
 }
@@ -3534,6 +3603,7 @@ int main()
 	return 0;
 }
 #endif
+#if 0
 #include <cstdio>
 #include <iostream>
 #include "opencv2/core.hpp"
@@ -3738,12 +3808,15 @@ int main()
 
 	}
 
+	file = fopen("merg.raw", "wb+");
+	fwrite(tdata, nsize, CV_16UC1, file);
+
 	Mat src = Mat(height, width, CV_16UC1, tdata);
 	if (!src.data) {
 		cout << "error read image" << endl;
 		return -1;
 	}
-
+	
 
 	std::vector<int> hist(65536);
 	int rows = src.rows;
@@ -3784,17 +3857,28 @@ int main()
 			//}else
 			//src.at<ushort>(r, c) = src.at<ushort>(r, c) * (65535 - min ) / (max - min) + 1 * min; // 线性映射
 
-			if (src.at<ushort>(r, c)<min)
+			if (src.at<ushort>(r, c)>28000 || src.at<ushort>(r, c)<23000)
 			{
 				src.at<ushort>(r, c) = 65535;
 			}
-			else if (src.at<ushort>(r, c) < max && src.at<ushort>(r, c)>m)
+			/*else if (src.at<ushort>(r, c) < max && src.at<ushort>(r, c)>m)
 			{
 				src.at<ushort>(r, c) = k * (src.at<ushort>(r, c) );
 			}
 			else {
 				src.at<ushort>(r, c) =(src.at<ushort>(r, c) )/k;
+			}*/
+			ushort t = src.at<ushort>(r, c);
+			
+			uchar a = t;
+			if (a == 0x5c||a == 0x5d|| a == 0x5e|| a == 0x5f || a == 0x60 ||a == 0x61|| a == 0x62|| a == 0x63)
+			{
+				src.at<ushort>(r, c) = 65535;//(src.at<ushort>(r, c)) / k;
 			}
+			else {
+				//src.at<ushort>(r, c) = 65535;
+			}
+
 		}
 	}
 	Mat hist1;
@@ -3820,8 +3904,8 @@ int main()
 	namedWindow("window_name");
 	resize(src, temp, cv::Size(), 0.5, 0.5);
 	imshow("window_name", temp);
-	
-
+	waitKey(0);
+	return 0;
 	Mat kernel = (Mat_<float>(3, 3) <<
 		-1, -1, -1,
 		-1, 8, -1,
@@ -3933,3 +4017,4 @@ int main()
 	waitKey(0);
 	return 0;
 }
+#endif
